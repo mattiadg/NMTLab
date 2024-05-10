@@ -9,6 +9,7 @@ from onmt.modules import MultiHeadedAttention
 from onmt.modules.position_ffn import PositionwiseFeedForward
 from onmt.modules.position_ffn import ActivationFunction
 from onmt.utils.misc import sequence_mask
+from onmt.utils.misc import wait_k_encoder_mask
 
 try:
     from apex.normalization import FusedRMSNorm as RMSNorm
@@ -153,6 +154,7 @@ class TransformerEncoder(EncoderBase):
           embeddings to use, should have positional encodings
         pos_ffn_activation_fn (ActivationFunction):
             activation function choice for PositionwiseFeedForward layer
+        wait_k (int|None): if not None, simulate wait-k policy
 
     Returns:
         (torch.FloatTensor, torch.FloatTensor):
@@ -185,6 +187,7 @@ class TransformerEncoder(EncoderBase):
         rotary_interleave=True,
         rotary_theta=1e4,
         rotary_dim=0,
+        wait_k=None,
     ):
         super(TransformerEncoder, self).__init__()
 
@@ -221,6 +224,7 @@ class TransformerEncoder(EncoderBase):
             self.layer_norm = RMSNorm(d_model, eps=norm_eps)
         else:
             raise ValueError(f"{layer_norm} layer norm type is not supported")
+        self.wait_k = wait_k
 
     @classmethod
     def from_opt(cls, opt, embeddings):
@@ -251,6 +255,7 @@ class TransformerEncoder(EncoderBase):
             rotary_interleave=opt.rotary_interleave,
             rotary_theta=opt.rotary_theta,
             rotary_dim=opt.rotary_dim,
+            wait_k=opt.wait_k
         )
 
     def forward(self, src, src_len=None):
@@ -260,8 +265,10 @@ class TransformerEncoder(EncoderBase):
         mask = mask.expand(-1, -1, mask.size(3), -1)
         # Padding mask is now (batch x 1 x slen x slen)
         # 1 to be expanded to number of heads in MHA
-        # Run the forward pass of every layer of the tranformer.
+        if self.wait_k:
+            mask = wait_k_encoder_mask(mask, k=self.wait_k)
 
+        # Run the forward pass of every layer of the tranformer.
         for layer in self.transformer:
             enc_out = layer(enc_out, mask)
         enc_out = self.layer_norm(enc_out)

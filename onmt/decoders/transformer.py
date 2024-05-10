@@ -11,6 +11,7 @@ from onmt.modules.position_ffn import PositionwiseFeedForward
 from onmt.modules.position_ffn import ActivationFunction
 from onmt.modules.moe import MoE
 from onmt.utils.misc import sequence_mask
+from onmt.utils.misc import wait_k_cross_mask, tile
 from onmt.modules.rmsnorm import RMSNorm
 
 
@@ -382,7 +383,8 @@ class TransformerDecoderLayer(TransformerDecoderLayerBase):
             dec_mask = self._compute_dec_mask(tgt_pad_mask, future)
             dec_mask = dec_mask.unsqueeze(1)
             dec_mask = dec_mask.expand(-1, -1, dec_mask.size(3), -1)
-            src_pad_mask = src_pad_mask.expand(-1, -1, dec_mask.size(3), -1)
+            if src_pad_mask.size(2) == 1:
+                src_pad_mask = src_pad_mask.expand(-1, -1, dec_mask.size(3), -1)
             # mask now are (batch x 1 x tlen x s or t len)
             # 1 = heads to be expanded in MHA
 
@@ -485,6 +487,7 @@ class TransformerDecoderBase(DecoderBase):
             rotary_dim=opt.rotary_dim,
             num_experts=opt.num_experts,
             num_experts_per_tok=opt.num_experts_per_tok,
+            wait_k=opt.wait_k,
         )
 
     def init_state(self, src, enc_out, enc_final_hs):
@@ -577,6 +580,7 @@ class TransformerDecoder(TransformerDecoderBase):
         rotary_dim (int): in some cases the rotary dim is lower than head dim
         num_experts (int): Number of experts for MoE
         num_experts_per_tok (int): Number of experts choice per token
+        wait_k (int|None): Simulate wait-k policy
     """
 
     def __init__(
@@ -612,6 +616,7 @@ class TransformerDecoder(TransformerDecoderBase):
         rotary_dim=0,
         num_experts=0,
         num_experts_per_tok=2,
+        wait_k=None,
     ):
         super(TransformerDecoder, self).__init__(
             d_model, copy_attn, embeddings, alignment_layer, layer_norm, norm_eps
@@ -651,6 +656,7 @@ class TransformerDecoder(TransformerDecoderBase):
                 for i in range(num_layers)
             ]
         )
+        self.wait_k = wait_k
 
     def detach_state(self):
         self.state["src"] = self.state["src"].detach()
@@ -688,6 +694,9 @@ class TransformerDecoder(TransformerDecoderBase):
         src_pad_mask = sequence_mask(src_len, src_max_len).unsqueeze(
             1
         )  # [B x 1 x slen]
+        if self.wait_k:
+            src_pad_mask = tile(src_pad_mask.unsqueeze(2), count=tgt.size(1), dim=2)
+            src_pad_mask = wait_k_cross_mask(src_pad_mask, k=self.wait_k, step=step)  # [B x tlen x slen]
         tgt_pad_mask = tgt[:, :, 0].eq(pad_idx).unsqueeze(1)  # [B, 1, T_tgt]
 
         with_align = kwargs.pop("with_align", False)
