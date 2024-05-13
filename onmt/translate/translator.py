@@ -881,8 +881,9 @@ class Translator(Inference):
         src = batch["src"]
         src_len = batch["srclen"]
         batch_size = len(batch["srclen"])
+        src_subwords = batch["src_text"]
 
-        enc_out, enc_final_hs, src_len = self.model.encoder(src, src_len)
+        enc_out, enc_final_hs, src_len = self.model.encoder(src, src_len, src_sw=src_subwords)
 
         if src_len is None:
             assert not isinstance(

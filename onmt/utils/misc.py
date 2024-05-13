@@ -58,14 +58,14 @@ def sequence_mask(lengths, max_len=None):
     return torch.arange(0, max_len, device=lengths.device) >= lengths.unsqueeze(1)
 
 
-def wait_k_encoder_mask(mask, k):
+def wait_k_encoder_mask(mask, proto, k):
     """
     Modifies the source padding mask to take the wait-k policy into account
     """
-    proto = torch.arange(0, mask.size(-1), device=mask.device).unsqueeze(0)
-    proto = tile(proto, count=mask.size(-1), dim=0)
+    #proto = torch.arange(0, mask.size(-1), device=mask.device).unsqueeze(0)
+    proto = tile(proto, count=mask.size(-1), dim=-2)
     minimum = proto >= k
-    new_mask = torch.logical_and(proto.t() < proto, minimum)
+    new_mask = torch.logical_and(proto.transpose(3, 2) < proto, minimum)
     return torch.logical_or(new_mask, mask)
 
 

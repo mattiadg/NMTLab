@@ -1,7 +1,7 @@
 """
 Implementation of "Attention is All You Need"
 """
-
+import torch
 import torch.nn as nn
 
 from onmt.encoders.encoder import EncoderBase
@@ -258,7 +258,7 @@ class TransformerEncoder(EncoderBase):
             wait_k=opt.wait_k
         )
 
-    def forward(self, src, src_len=None):
+    def forward(self, src, src_len=None, **additional_args):
         """See :func:`EncoderBase.forward()`"""
         enc_out = self.embeddings(src)
         mask = sequence_mask(src_len).unsqueeze(1).unsqueeze(1)
@@ -266,7 +266,20 @@ class TransformerEncoder(EncoderBase):
         # Padding mask is now (batch x 1 x slen x slen)
         # 1 to be expanded to number of heads in MHA
         if self.wait_k:
-            mask = wait_k_encoder_mask(mask, k=self.wait_k)
+            if "src_sw" in additional_args:
+                word_mask = []
+                for word_list in additional_args["src_sw"]:
+                    count = 0
+                    word_map = []
+                    for subword in word_list:
+                        word_map.append(count)
+                        if not subword.endswith("￭"):
+                            count += 1
+                    word_map.extend([99999 for _ in range(max(src_len) - len(word_map))])
+                    word_mask.append(word_map)
+                word_mask = torch.IntTensor(word_mask, device=mask.device)
+                word_mask = word_mask.unsqueeze(1).unsqueeze(1)
+            mask = wait_k_encoder_mask(mask, word_mask, k=self.wait_k)
 
         # Run the forward pass of every layer of the tranformer.
         for layer in self.transformer:

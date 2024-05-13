@@ -208,6 +208,7 @@ def tensorify(vocabs, minibatch, device, left_pad=False):
         ]
     padidx = vocabs["src"][DefaultTokens.PAD]
     tbatchsrc = pad_sequence(tbatchsrc, batch_first=True, padding_value=padidx)
+    src_text = [ex["src"]["src"].split(' ') for ex, _ in minibatch]
     if "feats" in minibatch[0][0]["src"]:
         tbatchfs = [tbatchsrc]
         for feat_id in range(len(minibatch[0][0]["src"]["feats"])):
@@ -245,6 +246,8 @@ def tensorify(vocabs, minibatch, device, left_pad=False):
         dtype=torch.long,
         device=device,
     )
+
+    tensor_batch["src_text"] = src_text
 
     if minibatch[0][0]["tgt"] is not None:
         if left_pad:

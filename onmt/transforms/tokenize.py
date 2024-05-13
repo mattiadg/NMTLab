@@ -77,6 +77,13 @@ class TokenizerTransform(Transform):
             "sampling, and dropout probability for BPE-dropout. "
             "(target side)",
         )
+        group.add(
+            "-subword_separator",
+            "--subword_separator",
+            type=str,
+            default="▁",
+            help="Separtor symbol for subwords",
+        )
 
         # subword vocabulary restriction options:
         group.add(
@@ -134,6 +141,7 @@ class TokenizerTransform(Transform):
         self.tgt_subword_vocab = self.opts.tgt_subword_vocab
         self.src_vocab_threshold = self.opts.src_vocab_threshold
         self.tgt_vocab_threshold = self.opts.tgt_vocab_threshold
+        self.subword_separator = self.opts.subword_separator
 
     def _repr_args(self):
         """Return str represent key arguments for TokenizerTransform."""
@@ -328,12 +336,12 @@ class BPETransform(TokenizerTransform):
                 tgt_vocabulary = read_vocabulary(_tv, self.tgt_vocab_threshold)
         # Load Subword Model
         with open(self.src_subword_model, encoding="utf-8") as src_codes:
-            load_src_model = BPE(codes=src_codes, vocab=src_vocabulary)
+            load_src_model = BPE(codes=src_codes, vocab=src_vocabulary, separator=self.subword_separator)
         if self.share_vocab and (src_vocabulary == tgt_vocabulary):
             self.load_models = {"src": load_src_model, "tgt": load_src_model}
         else:
             with open(self.tgt_subword_model, encoding="utf-8") as tgt_codes:
-                load_tgt_model = BPE(codes=tgt_codes, vocab=tgt_vocabulary)
+                load_tgt_model = BPE(codes=tgt_codes, vocab=tgt_vocabulary, separator=self.subword_separator)
             self.load_models = {"src": load_src_model, "tgt": load_tgt_model}
 
     def tokenize_string(self, string, side="src", is_train=False):
