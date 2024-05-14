@@ -146,6 +146,10 @@ def load_test_model(opt, device_id=0, model_path=None):
         0.0  # required to force no dropout at inference with flash
     )
 
+    # Add new parameters from command line
+    if hasattr(opt, 'wait_k'):
+        model_opt.wait_k = opt.wait_k
+
     model = build_base_model(model_opt, vocabs)
 
     precision = torch.float32

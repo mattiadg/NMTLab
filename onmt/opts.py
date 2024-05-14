@@ -9,6 +9,13 @@ from onmt.modules.position_ffn import ActivationFunction
 from onmt.constants import DefaultTokens
 
 
+def positive_int(x: str):
+    x = int(x)
+    if x < 1:
+        raise ValueError(f"{x} is not a positive int.")
+    return x
+
+
 def config_opts(parser):
     group = parser.add_argument_group("Configuration")
     group.add(
@@ -1853,6 +1860,13 @@ def translate_opts(parser):
         default="scaled-dot-flash",
         help="Self attention type in Transformer decoder "
         'layer -- currently "scaled-dot", "scaled-dot-flash" or "average" ',
+    )
+    group.add(
+        "--wait_k",
+        "-wait_k",
+        type=positive_int,
+        default=None,
+        help="Simulate wait-k policy"
     )
     group = parser.add_argument_group("Data")
     group.add(

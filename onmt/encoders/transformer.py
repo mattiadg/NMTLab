@@ -1,7 +1,7 @@
 """
 Implementation of "Attention is All You Need"
 """
-
+import torch
 import torch.nn as nn
 
 from onmt.encoders.encoder import EncoderBase
@@ -9,6 +9,7 @@ from onmt.modules import MultiHeadedAttention
 from onmt.modules.position_ffn import PositionwiseFeedForward
 from onmt.modules.position_ffn import ActivationFunction
 from onmt.utils.misc import sequence_mask
+from onmt.utils.misc import wait_k_encoder_mask
 
 try:
     from apex.normalization import FusedRMSNorm as RMSNorm
@@ -153,6 +154,7 @@ class TransformerEncoder(EncoderBase):
           embeddings to use, should have positional encodings
         pos_ffn_activation_fn (ActivationFunction):
             activation function choice for PositionwiseFeedForward layer
+        wait_k (int|None): if not None, simulate wait-k policy
 
     Returns:
         (torch.FloatTensor, torch.FloatTensor):
@@ -185,6 +187,7 @@ class TransformerEncoder(EncoderBase):
         rotary_interleave=True,
         rotary_theta=1e4,
         rotary_dim=0,
+        wait_k=None,
     ):
         super(TransformerEncoder, self).__init__()
 
@@ -221,6 +224,7 @@ class TransformerEncoder(EncoderBase):
             self.layer_norm = RMSNorm(d_model, eps=norm_eps)
         else:
             raise ValueError(f"{layer_norm} layer norm type is not supported")
+        self.wait_k = wait_k
 
     @classmethod
     def from_opt(cls, opt, embeddings):
@@ -251,21 +255,38 @@ class TransformerEncoder(EncoderBase):
             rotary_interleave=opt.rotary_interleave,
             rotary_theta=opt.rotary_theta,
             rotary_dim=opt.rotary_dim,
+            wait_k=opt.wait_k
         )
 
-    def forward(self, src, src_len=None):
+    def forward(self, src, src_len=None, **additional_args):
         """See :func:`EncoderBase.forward()`"""
         enc_out = self.embeddings(src)
         mask = sequence_mask(src_len).unsqueeze(1).unsqueeze(1)
         mask = mask.expand(-1, -1, mask.size(3), -1)
+        word_mask = None
         # Padding mask is now (batch x 1 x slen x slen)
         # 1 to be expanded to number of heads in MHA
-        # Run the forward pass of every layer of the tranformer.
+        if self.wait_k:
+            if "src_sw" in additional_args:
+                word_mask = []
+                for word_list in additional_args["src_sw"]:
+                    count = 0
+                    word_map = []
+                    for subword in word_list:
+                        word_map.append(count)
+                        if not subword.endswith("￭"):
+                            count += 1
+                    word_map.extend([99999 for _ in range(max(src_len) - len(word_map))])
+                    word_mask.append(word_map)
+                word_mask = torch.IntTensor(word_mask, device=mask.device)
+                word_mask = word_mask.unsqueeze(1).unsqueeze(1)
+            mask = wait_k_encoder_mask(mask, word_mask, k=self.wait_k)
 
+        # Run the forward pass of every layer of the tranformer.
         for layer in self.transformer:
             enc_out = layer(enc_out, mask)
         enc_out = self.layer_norm(enc_out)
-        return enc_out, None, src_len
+        return enc_out, None, src_len, word_mask
 
     def update_dropout(self, dropout, attention_dropout):
         self.embeddings.update_dropout(dropout)

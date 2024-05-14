@@ -266,7 +266,7 @@ class NMTModel(BaseModel):
         self.encoder = encoder
         self.decoder = decoder
 
-    def forward(self, src, tgt, src_len, bptt=False, with_align=False):
+    def forward(self, src, tgt, src_len, bptt=False, with_align=False, **additional_args):
         """An NMTModel forward the src side to the encoder.
         Then the output of encoder ``enc_out`` is forwarded to the
         decoder along with the target excluding the last token.
@@ -276,11 +276,11 @@ class NMTModel(BaseModel):
         * src in the case of Transformer"""
 
         dec_in = tgt[:, :-1, :]
-        enc_out, enc_final_hs, src_len = self.encoder(src, src_len)
+        enc_out, enc_final_hs, src_len = self.encoder(src, src_len, **additional_args)
         if not bptt:
             self.decoder.init_state(src, enc_out, enc_final_hs)
         dec_out, attns = self.decoder(
-            dec_in, enc_out, src_len=src_len, with_align=with_align
+            dec_in, enc_out, src_len=src_len, with_align=with_align, **additional_args
         )
         return dec_out, attns
 
