@@ -263,6 +263,7 @@ class TransformerEncoder(EncoderBase):
         enc_out = self.embeddings(src)
         mask = sequence_mask(src_len).unsqueeze(1).unsqueeze(1)
         mask = mask.expand(-1, -1, mask.size(3), -1)
+        word_mask = None
         # Padding mask is now (batch x 1 x slen x slen)
         # 1 to be expanded to number of heads in MHA
         if self.wait_k:

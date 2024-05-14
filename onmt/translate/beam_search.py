@@ -134,7 +134,7 @@ class BeamSearchBase(DecodeStrategy):
         self.topk_scores = torch.empty(
             (self.batch_size, self.beam_size), dtype=torch.float, device=device
         )
-        self.src_sw = src_sw.repeat(self.beam_size, 1, 1, 1)
+        self.src_sw = src_sw.repeat(self.beam_size, 1, 1, 1) if src_sw else None
         """
         self.topk_ids = torch.empty(
             (self.batch_size, self.beam_size), dtype=torch.long, device=device
@@ -272,7 +272,8 @@ class BeamSearchBase(DecodeStrategy):
         self.select_indices = self._batch_index.view(_B_new * self.beam_size)
         self.src_len = self.src_len[self.select_indices]
         self.maybe_update_target_prefix(self.select_indices)
-        self.src_sw = self.src_sw[self.select_indices, :, :, :]
+        if self.src_sw:
+            self.src_sw = self.src_sw[self.select_indices, :, :, :]
 
     def remove_finished_batches(
         self, _B_new, _B_old, non_finished, predictions, attention, step

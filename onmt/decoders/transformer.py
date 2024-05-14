@@ -696,7 +696,7 @@ class TransformerDecoder(TransformerDecoderBase):
             1
         )  # [B x 1 x slen]
         if self.wait_k:
-            src_pad_mask = tile(src_pad_mask.unsqueeze(2), count=tgt.size(1), dim=2)
+            src_pad_mask = src_pad_mask.unsqueeze(2)
             src_pad_mask = wait_k_cross_mask(src_pad_mask, kwargs["src_sw"], k=self.wait_k, step=step_sw)  # [B x tlen x slen]
         tgt_pad_mask = tgt[:, :, 0].eq(pad_idx).unsqueeze(1)  # [B, 1, T_tgt]
 
