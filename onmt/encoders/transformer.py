@@ -285,7 +285,7 @@ class TransformerEncoder(EncoderBase):
         for layer in self.transformer:
             enc_out = layer(enc_out, mask)
         enc_out = self.layer_norm(enc_out)
-        return enc_out, None, src_len
+        return enc_out, None, src_len, word_mask
 
     def update_dropout(self, dropout, attention_dropout):
         self.embeddings.update_dropout(dropout)

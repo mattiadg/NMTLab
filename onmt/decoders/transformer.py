@@ -668,6 +668,7 @@ class TransformerDecoder(TransformerDecoderBase):
         tgt (Tensor): batch x tlen x feats
         enc_out (Tensor): encoder output (batch x slen x model_dim)
         """
+        step_sw = kwargs.get("step_sw", None)
         if enc_out is None:
             enc_out = self.embeddings(tgt)
         if step == 0:
@@ -696,7 +697,7 @@ class TransformerDecoder(TransformerDecoderBase):
         )  # [B x 1 x slen]
         if self.wait_k:
             src_pad_mask = tile(src_pad_mask.unsqueeze(2), count=tgt.size(1), dim=2)
-            src_pad_mask = wait_k_cross_mask(src_pad_mask, k=self.wait_k, step=step)  # [B x tlen x slen]
+            src_pad_mask = wait_k_cross_mask(src_pad_mask, kwargs["src_sw"], k=self.wait_k, step=step_sw)  # [B x tlen x slen]
         tgt_pad_mask = tgt[:, :, 0].eq(pad_idx).unsqueeze(1)  # [B, 1, T_tgt]
 
         with_align = kwargs.pop("with_align", False)

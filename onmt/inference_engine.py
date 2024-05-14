@@ -157,7 +157,7 @@ class InferenceEnginePY(InferenceEngine):
 
     def _translate(self, infer_iter):
         scores, preds = self.translator._translate(
-            infer_iter, infer_iter.transforms, self.opt.attn_debug, self.opt.align_debug
+            infer_iter, infer_iter.transforms, self.opt.attn_debug, self.opt.align_debug, self.vocabs
         )
         return scores, preds
 

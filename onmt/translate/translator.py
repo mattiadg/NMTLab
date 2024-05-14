@@ -301,7 +301,6 @@ class Inference(object):
         transform=None,
         attn_debug=False,
         align_debug=False,
-        phrase_table="",
     ):
         """Translate content of ``src`` and get gold scores from ``tgt``.
 
@@ -668,6 +667,8 @@ class Inference(object):
         step=None,
         batch_offset=None,
         return_attn=False,
+        src_sw=None,
+        step_sw=None,
     ):
         if self.copy_attn:
             # Turn any copied words into UNKs.
@@ -686,6 +687,8 @@ class Inference(object):
             src_len=src_len,
             step=step,
             return_attn=self.global_scorer.has_cov_pen or return_attn,
+            src_sw=src_sw,
+            step_sw=step_sw,
         )
         # Generator forward.
         if not self.copy_attn:
@@ -874,6 +877,7 @@ class Translator(Inference):
                     stepwise_penalty=self.stepwise_penalty,
                     ratio=self.ratio,
                     ban_unk_token=self.ban_unk_token,
+                    vocabs=self.vocabs
                 )
             return self._translate_batch_with_strategy(batch, decode_strategy)
 
@@ -883,7 +887,7 @@ class Translator(Inference):
         batch_size = len(batch["srclen"])
         src_subwords = batch["src_text"]
 
-        enc_out, enc_final_hs, src_len = self.model.encoder(src, src_len, src_sw=src_subwords)
+        enc_out, enc_final_hs, src_len, src_sw = self.model.encoder(src, src_len, src_sw=src_subwords)
 
         if src_len is None:
             assert not isinstance(
@@ -892,7 +896,7 @@ class Translator(Inference):
             src_len = (
                 torch.Tensor(batch_size).type_as(enc_out).long().fill_(enc_out.size(1))
             )
-        return src, enc_final_hs, enc_out, src_len
+        return src, enc_final_hs, enc_out, src_len, src_sw
 
     def _translate_batch_with_strategy(self, batch, decode_strategy):
         """Translate a batch of sentences step by step using cache.
@@ -912,7 +916,7 @@ class Translator(Inference):
         batch_size = len(batch["srclen"])
 
         # (1) Run the encoder on the src.
-        src, enc_final_hs, enc_out, src_len = self._run_encoder(batch)
+        src, enc_final_hs, enc_out, src_len, src_sw = self._run_encoder(batch)
 
         self.model.decoder.init_state(src, enc_out, enc_final_hs)
 
@@ -930,7 +934,7 @@ class Translator(Inference):
         src_map = batch["src_map"] if use_src_map else None
         target_prefix = batch["tgt"] if self.tgt_file_prefix else None
         (fn_map_state, enc_out, src_map) = decode_strategy.initialize(
-            enc_out, src_len, src_map, target_prefix=target_prefix
+            enc_out, src_len, src_map, target_prefix=target_prefix, src_sw=src_sw
         )
 
         if fn_map_state is not None:
@@ -949,6 +953,8 @@ class Translator(Inference):
                 step=step,
                 batch_offset=decode_strategy.batch_offset,
                 return_attn=decode_strategy.return_attention,
+                src_sw=decode_strategy.src_sw,
+                step_sw=decode_strategy.step(),
             )
 
             decode_strategy.advance(log_probs, attn)

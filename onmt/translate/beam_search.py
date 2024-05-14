@@ -73,6 +73,7 @@ class BeamSearchBase(DecodeStrategy):
         stepwise_penalty,
         ratio,
         ban_unk_token,
+        vocabs = None,
     ):
         super(BeamSearchBase, self).__init__(
             pad,
@@ -109,11 +110,12 @@ class BeamSearchBase(DecodeStrategy):
         self._cov_pen = self.global_scorer.has_cov_pen
 
         self.src_len = None
+        self.vocabs = vocabs
 
     def initialize(self, *args, **kwargs):
         raise NotImplementedError
 
-    def initialize_(self, enc_out, src_map, device, target_prefix):
+    def initialize_(self, enc_out, src_map, device, target_prefix, src_sw):
         super(BeamSearchBase, self).initialize(device, target_prefix)
         self.best_scores = [-1e10 for _ in range(self.batch_size)]
         self._beam_offset = torch.arange(
@@ -132,6 +134,7 @@ class BeamSearchBase(DecodeStrategy):
         self.topk_scores = torch.empty(
             (self.batch_size, self.beam_size), dtype=torch.float, device=device
         )
+        self.src_sw = src_sw.repeat(self.beam_size, 1, 1, 1)
         """
         self.topk_ids = torch.empty(
             (self.batch_size, self.beam_size), dtype=torch.long, device=device
@@ -269,6 +272,7 @@ class BeamSearchBase(DecodeStrategy):
         self.select_indices = self._batch_index.view(_B_new * self.beam_size)
         self.src_len = self.src_len[self.select_indices]
         self.maybe_update_target_prefix(self.select_indices)
+        self.src_sw = self.src_sw[self.select_indices, :, :, :]
 
     def remove_finished_batches(
         self, _B_new, _B_old, non_finished, predictions, attention, step
@@ -380,6 +384,20 @@ class BeamSearchBase(DecodeStrategy):
 
         self.ensure_max_length()
 
+    def step(self):
+        if not self.vocabs or not self.vocabs["tgt"]:
+            return len(self.alive_seq)
+        decoded_step = []
+        for hyp in self.alive_seq:
+            hyp_text = [self.vocabs["tgt"].ids_to_tokens[x] for x in hyp]
+            count = 0
+            for i in range(1, len(hyp_text)):
+                if not hyp_text[i - 1].endswith("￭"):
+                    count += 1
+            decoded_step.append(count)
+        return torch.IntTensor(decoded_step)
+
+
 
 class BeamSearch(BeamSearchBase):
     """
@@ -387,7 +405,7 @@ class BeamSearch(BeamSearchBase):
     """
 
     def initialize(
-        self, enc_out, src_len, src_map=None, device=None, target_prefix=None
+        self, enc_out, src_len, src_map=None, device=None, target_prefix=None, src_sw=None
     ):
         """Initialize for decoding.
         Repeat src objects `beam_size` times.
@@ -399,7 +417,7 @@ class BeamSearch(BeamSearchBase):
         if device is None:
             device = self.get_device_from_enc_out(enc_out)
 
-        super(BeamSearch, self).initialize_(enc_out, src_map, device, target_prefix)
+        super(BeamSearch, self).initialize_(enc_out, src_map, device, target_prefix, src_sw=src_sw)
 
         return fn_map_state, enc_out, src_map
 

@@ -58,7 +58,7 @@ def sequence_mask(lengths, max_len=None):
     return torch.arange(0, max_len, device=lengths.device) >= lengths.unsqueeze(1)
 
 
-def wait_k_encoder_mask(mask, proto, k):
+def wait_k_encoder_mask(mask, proto, k: int):
     """
     Modifies the source padding mask to take the wait-k policy into account
     """
@@ -69,13 +69,15 @@ def wait_k_encoder_mask(mask, proto, k):
     return torch.logical_or(new_mask, mask)
 
 
-def wait_k_cross_mask(mask, k: int, step: int|None):
+def wait_k_cross_mask(mask, encoder_mask, k: int, step):
     """
     Modifies the cross-attention mask to take the wait-k policy into account
+
+    mask size: [B, 1, 1, max_len] (during decoding)
     """
-    shift = step + k if step else k
-    true = torch.ones_like(mask, device=mask.device, dtype=torch.bool)
-    return torch.logical_or(torch.triu(true, diagonal=shift), mask).squeeze(1)
+    step = step.unsqueeze(1).unsqueeze(1).unsqueeze(1)
+    wait_k_mask = step + k - 1 < encoder_mask
+    return torch.logical_or(wait_k_mask, mask).squeeze(1)
 
 
 def tile(x, count, dim=0):
