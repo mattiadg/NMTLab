@@ -10,6 +10,7 @@ from onmt.modules.position_ffn import PositionwiseFeedForward
 from onmt.modules.position_ffn import ActivationFunction
 from onmt.utils.misc import sequence_mask
 from onmt.utils.misc import wait_k_encoder_mask
+from onmt.utils.misc import is_subword
 
 try:
     from apex.normalization import FusedRMSNorm as RMSNorm
@@ -274,7 +275,7 @@ class TransformerEncoder(EncoderBase):
                     word_map = []
                     for subword in word_list:
                         word_map.append(count)
-                        if not subword.endswith("￭"):
+                        if not is_subword(subword):
                             count += 1
                     word_map.extend([99999 for _ in range(max(src_len) - len(word_map))])
                     word_mask.append(word_map)

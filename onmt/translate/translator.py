@@ -971,15 +971,15 @@ class Translator(Inference):
             if any_finished:
                 # Reorder states.
                 if isinstance(enc_out, tuple):
-                    enc_out = tuple(x[select_indices] for x in enc_out)
+                    enc_out = tuple(torch.index_select(x, 0, select_indices) for x in enc_out)
                 else:
-                    enc_out = enc_out[select_indices]
+                    enc_out = torch.index_select(enc_out, 0, select_indices)
 
                 if src_map is not None:
-                    src_map = src_map[select_indices]
+                    src_map = torch.index_select(src_map, 0, select_indices)
 
             if parallel_paths > 1 or any_finished:
-                self.model.decoder.map_state(lambda state, dim: state[select_indices])
+                self.model.decoder.map_state(lambda state, dim: torch.index_select(state, 0, select_indices))
 
         return self.report_results(
             gold_score,

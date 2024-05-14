@@ -1,6 +1,7 @@
 import torch
 from onmt.translate import penalties
 from onmt.translate.decode_strategy import DecodeStrategy
+from onmt.utils.misc import is_subword
 import warnings
 
 
@@ -134,7 +135,7 @@ class BeamSearchBase(DecodeStrategy):
         self.topk_scores = torch.empty(
             (self.batch_size, self.beam_size), dtype=torch.float, device=device
         )
-        self.src_sw = src_sw.repeat(self.beam_size, 1, 1, 1) if src_sw else None
+        self.src_sw = src_sw.repeat(self.beam_size, 1, 1, 1) if src_sw is not None else None
         """
         self.topk_ids = torch.empty(
             (self.batch_size, self.beam_size), dtype=torch.long, device=device
@@ -270,10 +271,10 @@ class BeamSearchBase(DecodeStrategy):
 
         # reset the selection for the next step
         self.select_indices = self._batch_index.view(_B_new * self.beam_size)
-        self.src_len = self.src_len[self.select_indices]
+        self.src_len = torch.index_select(self.src_len, 0, self.select_indices)
         self.maybe_update_target_prefix(self.select_indices)
-        if self.src_sw:
-            self.src_sw = self.src_sw[self.select_indices, :, :, :]
+        if self.src_sw is not None:
+            self.src_sw = torch.index_select(self.src_sw, 0, self.select_indices)
 
     def remove_finished_batches(
         self, _B_new, _B_old, non_finished, predictions, attention, step
@@ -393,11 +394,10 @@ class BeamSearchBase(DecodeStrategy):
             hyp_text = [self.vocabs["tgt"].ids_to_tokens[x] for x in hyp]
             count = 0
             for i in range(1, len(hyp_text)):
-                if not hyp_text[i - 1].endswith("￭"):
+                if not is_subword(hyp_text[i - 1]):
                     count += 1
             decoded_step.append(count)
         return torch.IntTensor(decoded_step)
-
 
 
 class BeamSearch(BeamSearchBase):
