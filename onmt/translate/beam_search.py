@@ -53,6 +53,7 @@ class BeamSearchBase(DecodeStrategy):
             ``(1, B x beam_size, inp_seq_len)``.
         hypotheses (list[list[Tuple[Tensor]]]): Contains a tuple
             of score (float), sequence (long), and attention (float or None).
+        separator (str): subword separator, useful for some use cases like wait-k decoding
     """
 
     def __init__(
@@ -74,7 +75,8 @@ class BeamSearchBase(DecodeStrategy):
         stepwise_penalty,
         ratio,
         ban_unk_token,
-        vocabs = None,
+        vocabs=None,
+        separator: str = "",
     ):
         super(BeamSearchBase, self).__init__(
             pad,
@@ -112,6 +114,7 @@ class BeamSearchBase(DecodeStrategy):
 
         self.src_len = None
         self.vocabs = vocabs
+        self.separator = separator
 
     def initialize(self, *args, **kwargs):
         raise NotImplementedError
@@ -394,7 +397,7 @@ class BeamSearchBase(DecodeStrategy):
             hyp_text = [self.vocabs["tgt"].ids_to_tokens[x] for x in hyp]
             count = 0
             for i in range(1, len(hyp_text)):
-                if not is_subword(hyp_text[i - 1]):
+                if not is_subword(hyp_text[i - 1], self.separator):
                     count += 1
             decoded_step.append(count)
         return torch.IntTensor(decoded_step)

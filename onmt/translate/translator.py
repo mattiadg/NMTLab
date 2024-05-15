@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 """ Translator Class and builder """
+from argparse import Namespace
+
 import torch
 from torch.nn.functional import log_softmax
 from torch.nn.utils.rnn import pad_sequence
@@ -97,6 +99,7 @@ class Inference(object):
         out_file (TextIO or codecs.StreamReaderWriter): Output file.
         report_score (bool) : Whether to report scores
         logger (logging.Logger or NoneType): Logger.
+        opt (Namespace|None)
     """
 
     def __init__(
@@ -134,6 +137,7 @@ class Inference(object):
         seed=-1,
         with_score=False,
         return_gold_log_probs=False,
+        opt=None,
     ):
         self.model = model
         self.vocabs = vocabs
@@ -208,6 +212,8 @@ class Inference(object):
 
         self.return_gold_log_probs = return_gold_log_probs
 
+        self.opt = opt or Namespace()
+
     @classmethod
     def from_opt(
         cls,
@@ -274,6 +280,7 @@ class Inference(object):
             logger=logger,
             seed=opt.seed,
             with_score=opt.with_score,
+            opt=opt,
         )
 
     def _log(self, msg):
@@ -877,7 +884,8 @@ class Translator(Inference):
                     stepwise_penalty=self.stepwise_penalty,
                     ratio=self.ratio,
                     ban_unk_token=self.ban_unk_token,
-                    vocabs=self.vocabs
+                    vocabs=self.vocabs,
+                    separator=self.opt.subword_separator,
                 )
             return self._translate_batch_with_strategy(batch, decode_strategy)
 
@@ -887,7 +895,7 @@ class Translator(Inference):
         batch_size = len(batch["srclen"])
         src_subwords = batch["src_text"]
 
-        enc_out, enc_final_hs, src_len, src_sw = self.model.encoder(src, src_len, src_sw=src_subwords)
+        enc_out, enc_final_hs, src_len, src_sw = self.model.encoder(src, src_len, src_sw=src_subwords, separator=self.opt.subword_separator)
 
         if src_len is None:
             assert not isinstance(

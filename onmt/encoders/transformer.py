@@ -275,7 +275,7 @@ class TransformerEncoder(EncoderBase):
                     word_map = []
                     for subword in word_list:
                         word_map.append(count)
-                        if not is_subword(subword):
+                        if not is_subword(subword, separator=additional_args["separator"]):
                             count += 1
                     word_map.extend([99999 for _ in range(max(src_len) - len(word_map))])
                     word_mask.append(word_map)

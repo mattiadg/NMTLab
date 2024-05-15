@@ -80,8 +80,13 @@ def wait_k_cross_mask(mask, encoder_mask, k: int, step):
     return torch.logical_or(wait_k_mask, mask).squeeze(1)
 
 
-def is_subword(token: str):
-    return token.endswith("￭") or token.startswith("▁") or token.endswith("@@")
+def is_subword(token: str, separator: str):
+    if separator in ["￭", "@@"]:
+        return token.endswith(separator)
+    elif separator == "▁":
+        return not token.startswith(separator)
+    else:
+        raise NotImplementedError(f"Unsupported separator {separator}.")
 
 
 def tile(x, count, dim=0):
