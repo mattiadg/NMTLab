@@ -11,7 +11,7 @@ from onmt.modules.position_ffn import PositionwiseFeedForward
 from onmt.modules.position_ffn import ActivationFunction
 from onmt.modules.moe import MoE
 from onmt.utils.misc import sequence_mask
-from onmt.utils.misc import wait_k_cross_mask, tile
+from onmt.utils.misc import wait_k_cross_mask
 from onmt.modules.rmsnorm import RMSNorm
 
 
@@ -697,7 +697,9 @@ class TransformerDecoder(TransformerDecoderBase):
         )  # [B x 1 x slen]
         if self.wait_k:
             src_pad_mask = src_pad_mask.unsqueeze(2)
-            src_pad_mask = wait_k_cross_mask(src_pad_mask, kwargs["src_sw"], k=self.wait_k, step=step_sw)  # [B x tlen x slen]
+            src_pad_mask = wait_k_cross_mask(
+                src_pad_mask, kwargs["src_sw"], k=self.wait_k, step=step_sw
+            )  # [B x tlen x slen]
         tgt_pad_mask = tgt[:, :, 0].eq(pad_idx).unsqueeze(1)  # [B, 1, T_tgt]
 
         with_align = kwargs.pop("with_align", False)
@@ -725,7 +727,6 @@ class TransformerDecoder(TransformerDecoderBase):
             attns["copy"] = attn
         if with_align:
             attns["align"] = attn_aligns[self.alignment_layer]  # `(B, Q, K)`
-            # attns["align"] = torch.stack(attn_aligns, 0).mean(0)  # All avg
 
         # TODO change the way attns is returned dict => list or tuple (onnx)
         return dec_out, attns
@@ -938,7 +939,7 @@ class TransformerLMDecoder(TransformerDecoderBase):
                     num_experts=num_experts,
                     num_experts_per_tok=num_experts_per_tok,
                 )
-                for i in range(num_layers)
+                for _ in range(num_layers)
             ]
         )
 
