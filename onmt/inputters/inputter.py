@@ -102,7 +102,7 @@ def _read_vocab_file(vocab_path, min_count):
 
     Args:
         vocab_path (str): Path to utf-8 text file containing vocabulary.
-            Each token should be on a line, may followed with a count number
+            Each token should be on a line, may be followed by a count number
             seperate by space if `with_count`. No extra whitespace is allowed.
         min_count (int): retains only tokens with min_count frequency.
     """
@@ -148,16 +148,17 @@ def vocabs_to_dict(vocabs):
 
 def dict_to_vocabs(vocabs_dict):
     """
-    Convert a dict formatted vocabs (as stored in a checkpoint)
-    into a dict of pyonmttok vocabs objects.
+    Convert a dict-formatted vocabulary (as stored in a checkpoint)
+    into a dict of pyonmttok vocabulary objects.
     """
-    vocabs = {}
-    vocabs["data_task"] = vocabs_dict["data_task"]
+    vocabs = {
+        "data_task": vocabs_dict["data_task"],
+        "src": pyonmttok.build_vocab_from_tokens(vocabs_dict["src"]),
+    }
     if "decoder_start_token" in vocabs_dict.keys():
         vocabs["decoder_start_token"] = vocabs_dict["decoder_start_token"]
     else:
         vocabs["decoder_start_token"] = DefaultTokens.BOS
-    vocabs["src"] = pyonmttok.build_vocab_from_tokens(vocabs_dict["src"])
     if vocabs_dict["src"] == vocabs_dict["tgt"]:
         vocabs["tgt"] = vocabs["src"]
     else:
