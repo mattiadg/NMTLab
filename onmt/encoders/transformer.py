@@ -67,6 +67,7 @@ class TransformerEncoderLayer(nn.Module):
         rotary_interleave=True,
         rotary_theta=1e4,
         rotary_dim=0,
+        pre_layer_norm=True,
     ):
         super(TransformerEncoderLayer, self).__init__()
 
@@ -107,6 +108,7 @@ class TransformerEncoderLayer(nn.Module):
             raise ValueError(f"{layer_norm} layer norm type is not supported")
         self.dropout_p = dropout
         self.dropout = nn.Dropout(dropout)
+        self.pre_layer_norm = pre_layer_norm
 
     def forward(self, layer_in, mask):
         """
@@ -118,7 +120,7 @@ class TransformerEncoderLayer(nn.Module):
             (FloatTensor):
             * layer_out ``(batch_size, src_len, model_dim)``
         """
-        norm_layer_in = self.layer_norm(layer_in)
+        norm_layer_in = self.layer_norm(layer_in) if self.pre_layer_norm else layer_in
         context, _ = self.self_attn(
             norm_layer_in, norm_layer_in, norm_layer_in, mask=mask
         )
@@ -131,6 +133,8 @@ class TransformerEncoderLayer(nn.Module):
             )
         else:
             layer_out = context + layer_in
+            if not self.pre_layer_norm:
+                layer_out = self.layer_norm(layer_out)
             layer_out = self.feed_forward(layer_out)
 
         return layer_out
@@ -156,6 +160,7 @@ class TransformerEncoder(EncoderBase):
         pos_ffn_activation_fn (ActivationFunction):
             activation function choice for PositionwiseFeedForward layer
         wait_k (int|None): if not None, simulate wait-k policy
+        final_layer_norm (bool): whether to add a final layer norm or not
 
     Returns:
         (torch.FloatTensor, torch.FloatTensor):
@@ -189,6 +194,7 @@ class TransformerEncoder(EncoderBase):
         rotary_theta=1e4,
         rotary_dim=0,
         wait_k=None,
+        final_layer_norm=True,
     ):
         super(TransformerEncoder, self).__init__()
 
@@ -215,16 +221,20 @@ class TransformerEncoder(EncoderBase):
                     rotary_interleave=rotary_interleave,
                     rotary_theta=rotary_theta,
                     rotary_dim=rotary_dim,
+                    pre_layer_norm=final_layer_norm,
                 )
                 for i in range(num_layers)
             ]
         )
-        if layer_norm == "standard":
-            self.layer_norm = nn.LayerNorm(d_model, eps=norm_eps)
-        elif layer_norm == "rms":
-            self.layer_norm = RMSNorm(d_model, eps=norm_eps)
+        if final_layer_norm:
+            if layer_norm == "standard":
+                self.layer_norm = nn.LayerNorm(d_model, eps=norm_eps)
+            elif layer_norm == "rms":
+                self.layer_norm = RMSNorm(d_model, eps=norm_eps)
+            else:
+                raise ValueError(f"{layer_norm} layer norm type is not supported")
         else:
-            raise ValueError(f"{layer_norm} layer norm type is not supported")
+            self.layer_norm = None
         self.wait_k = wait_k
 
     @classmethod
@@ -256,7 +266,8 @@ class TransformerEncoder(EncoderBase):
             rotary_interleave=opt.rotary_interleave,
             rotary_theta=opt.rotary_theta,
             rotary_dim=opt.rotary_dim,
-            wait_k=opt.wait_k
+            wait_k=opt.wait_k,
+            final_layer_norm=getattr(opt, "final_layer_norm", True),
         )
 
     def forward(self, src, src_len=None, **additional_args):
@@ -286,7 +297,8 @@ class TransformerEncoder(EncoderBase):
         # Run the forward pass of every layer of the tranformer.
         for layer in self.transformer:
             enc_out = layer(enc_out, mask)
-        enc_out = self.layer_norm(enc_out)
+        if self.final_layer_norm:
+            enc_out = self.layer_norm(enc_out)
         return enc_out, None, src_len, word_mask
 
     def update_dropout(self, dropout, attention_dropout):

@@ -289,6 +289,7 @@ class TransformerDecoderLayer(TransformerDecoderLayerBase):
         rotary_dim=0,
         num_experts=0,
         num_experts_per_tok=2,
+        pre_layer_norm=True,
     ):
         """
         Args:
@@ -334,6 +335,7 @@ class TransformerDecoderLayer(TransformerDecoderLayerBase):
             use_ckpting=use_ckpting,
             parallel_gpu=parallel_gpu,
         )
+        self.pre_layer_norm = pre_layer_norm
         if layer_norm == "standard":
             self.layer_norm_2 = nn.LayerNorm(d_model, eps=norm_eps)
         elif layer_norm == "rms":
@@ -388,7 +390,10 @@ class TransformerDecoderLayer(TransformerDecoderLayerBase):
             # mask now are (batch x 1 x tlen x s or t len)
             # 1 = heads to be expanded in MHA
 
-        norm_layer_in = self.layer_norm_1(layer_in)
+        if self.pre_layer_norm:
+            norm_layer_in = self.layer_norm_1(layer_in)
+        else:
+            norm_layer_in = layer_in
 
         self_attn, _ = self._forward_self_attn(
             norm_layer_in, dec_mask, step, return_attn=return_attn
@@ -413,20 +418,27 @@ class TransformerDecoderLayer(TransformerDecoderLayerBase):
             )
         else:
             query = self_attn + layer_in
-            norm_query = self.layer_norm_2(query)
+            if self.pre_layer_norm:
+                norm_query = self.layer_norm_2(query)
+            else:
+                norm_query = self.layer_norm_1(query)
             ctx_attn, attns = self.context_attn(
                 enc_out, enc_out, norm_query, mask=src_pad_mask, return_attn=return_attn
             )
             if self.dropout_p > 0:
                 ctx_attn = self.dropout(ctx_attn)
-            layer_out = self.feed_forward(ctx_attn + query)
+            if self.pre_layer_norm:
+                pre_ff = ctx_attn + query
+            else:
+                pre_ff = self.layer_norm_2(ctx_attn + query)
+            layer_out = self.feed_forward(pre_ff)
 
         return layer_out, attns
 
 
 class TransformerDecoderBase(DecoderBase):
     def __init__(
-        self, d_model, copy_attn, embeddings, alignment_layer, layer_norm, norm_eps
+        self, d_model, copy_attn, embeddings, alignment_layer, layer_norm, norm_eps, final_layer_norm
     ):
         super(TransformerDecoderBase, self).__init__()
 
@@ -439,12 +451,15 @@ class TransformerDecoderBase(DecoderBase):
         # attention. But it was never actually used -- the "copy" attention
         # just reuses the context attention.
         self._copy = copy_attn
-        if layer_norm == "standard":
-            self.layer_norm = nn.LayerNorm(d_model, eps=norm_eps)
-        elif layer_norm == "rms":
-            self.layer_norm = RMSNorm(d_model, eps=norm_eps)
+        if final_layer_norm:
+            if layer_norm == "standard":
+                self.layer_norm = nn.LayerNorm(d_model, eps=norm_eps)
+            elif layer_norm == "rms":
+                self.layer_norm = RMSNorm(d_model, eps=norm_eps)
+            else:
+                raise ValueError(f"{layer_norm} layer norm type is not supported")
         else:
-            raise ValueError(f"{layer_norm} layer norm type is not supported")
+            self.layer_norm = False
 
         self.alignment_layer = alignment_layer
 
@@ -488,6 +503,7 @@ class TransformerDecoderBase(DecoderBase):
             num_experts=opt.num_experts,
             num_experts_per_tok=opt.num_experts_per_tok,
             wait_k=opt.wait_k,
+            final_layer_norm=opt.final_layer_norm
         )
 
     def init_state(self, src, enc_out, enc_final_hs):
@@ -581,6 +597,8 @@ class TransformerDecoder(TransformerDecoderBase):
         num_experts (int): Number of experts for MoE
         num_experts_per_tok (int): Number of experts choice per token
         wait_k (int|None): Simulate wait-k policy
+        final_layer_norm (bool): if the decoder should have a final layer norm.
+                it goes with pre-norm
     """
 
     def __init__(
@@ -617,9 +635,10 @@ class TransformerDecoder(TransformerDecoderBase):
         num_experts=0,
         num_experts_per_tok=2,
         wait_k=None,
+        final_layer_norm=True,
     ):
         super(TransformerDecoder, self).__init__(
-            d_model, copy_attn, embeddings, alignment_layer, layer_norm, norm_eps
+            d_model, copy_attn, embeddings, alignment_layer, layer_norm, norm_eps, final_layer_norm
         )
 
         self.transformer_layers = nn.ModuleList(
@@ -652,6 +671,7 @@ class TransformerDecoder(TransformerDecoderBase):
                     rotary_dim=rotary_dim,
                     num_experts=num_experts,
                     num_experts_per_tok=num_experts_per_tok,
+                    pre_layer_norm=final_layer_norm
                 )
                 for i in range(num_layers)
             ]
@@ -720,7 +740,8 @@ class TransformerDecoder(TransformerDecoderBase):
             if attn_align is not None:
                 attn_aligns.append(attn_align)
 
-        dec_out = self.layer_norm(dec_out)
+        if self.layer_norm is not None:
+            dec_out = self.layer_norm(dec_out)
 
         attns = {"std": attn}
         if self._copy:
