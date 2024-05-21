@@ -136,6 +136,7 @@ class Embeddings(nn.Module):
         dropout=0,
         sparse=False,
         freeze_word_vecs=False,
+        positional_max_len=5000,
     ):
         self._validate_args(
             feat_merge,
@@ -208,7 +209,7 @@ class Embeddings(nn.Module):
         self.dropout_p = dropout
 
         if self.position_encoding:
-            pe = PositionalEncoding(self.embedding_size, position_encoding_type)
+            pe = PositionalEncoding(self.embedding_size, position_encoding_type, max_len=positional_max_len)
             self.make_embedding.add_module("pe", pe)
 
         if freeze_word_vecs:

@@ -45,6 +45,7 @@ class TransformerDecoderLayerBase(nn.Module):
         rotary_dim=0,
         num_experts=0,
         num_experts_per_tok=2,
+        pre_layer_norm=True,
     ):
         """
         Args:
@@ -95,6 +96,7 @@ class TransformerDecoderLayerBase(nn.Module):
         """
         super(TransformerDecoderLayerBase, self).__init__()
 
+        self.pre_layer_norm = pre_layer_norm
         if self_attn_type in ["scaled-dot", "scaled-dot-flash"]:
             self.self_attn = MultiHeadedAttention(
                 heads,
@@ -144,6 +146,7 @@ class TransformerDecoderLayerBase(nn.Module):
                 norm_eps,
                 use_ckpting=use_ckpting,
                 parallel_gpu=parallel_gpu,
+                pre_layer_norm=self.pre_layer_norm
             )
         self.parallel_residual = parallel_residual
         self.shared_layer_norm = shared_layer_norm
@@ -323,6 +326,7 @@ class TransformerDecoderLayer(TransformerDecoderLayerBase):
             rotary_dim=rotary_dim,
             num_experts=num_experts,
             num_experts_per_tok=num_experts_per_tok,
+            pre_layer_norm=pre_layer_norm
         )
         self.context_attn = MultiHeadedAttention(
             heads,
@@ -335,7 +339,6 @@ class TransformerDecoderLayer(TransformerDecoderLayerBase):
             use_ckpting=use_ckpting,
             parallel_gpu=parallel_gpu,
         )
-        self.pre_layer_norm = pre_layer_norm
         if layer_norm == "standard":
             self.layer_norm_2 = nn.LayerNorm(d_model, eps=norm_eps)
         elif layer_norm == "rms":
@@ -427,9 +430,8 @@ class TransformerDecoderLayer(TransformerDecoderLayerBase):
             )
             if self.dropout_p > 0:
                 ctx_attn = self.dropout(ctx_attn)
-            if self.pre_layer_norm:
-                pre_ff = ctx_attn + query
-            else:
+            pre_ff = ctx_attn + query
+            if not self.pre_layer_norm:
                 pre_ff = self.layer_norm_2(ctx_attn + query)
             layer_out = self.feed_forward(pre_ff)
 
@@ -459,7 +461,7 @@ class TransformerDecoderBase(DecoderBase):
             else:
                 raise ValueError(f"{layer_norm} layer norm type is not supported")
         else:
-            self.layer_norm = False
+            self.layer_norm = None
 
         self.alignment_layer = alignment_layer
 

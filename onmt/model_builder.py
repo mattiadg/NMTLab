@@ -60,6 +60,7 @@ def build_embeddings(opt, vocabs, for_encoder=True):
         feat_vocab_sizes=num_feat_embeddings,
         sparse=opt.optim == "sparseadam",
         freeze_word_vecs=freeze_word_vecs,
+        positional_max_len=opt.num_positional_encoding,
     )
     return emb
 

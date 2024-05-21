@@ -71,6 +71,7 @@ class TransformerEncoderLayer(nn.Module):
     ):
         super(TransformerEncoderLayer, self).__init__()
 
+        self.pre_layer_norm = pre_layer_norm
         self.self_attn = MultiHeadedAttention(
             heads,
             d_model,
@@ -98,6 +99,7 @@ class TransformerEncoderLayer(nn.Module):
             norm_eps,
             use_ckpting=use_ckpting,
             parallel_gpu=parallel_gpu,
+            pre_layer_norm=self.pre_layer_norm
         )
         self.parallel_residual = parallel_residual
         if layer_norm == "standard":
@@ -108,7 +110,6 @@ class TransformerEncoderLayer(nn.Module):
             raise ValueError(f"{layer_norm} layer norm type is not supported")
         self.dropout_p = dropout
         self.dropout = nn.Dropout(dropout)
-        self.pre_layer_norm = pre_layer_norm
 
     def forward(self, layer_in, mask):
         """
@@ -133,8 +134,7 @@ class TransformerEncoderLayer(nn.Module):
             )
         else:
             layer_out = context + layer_in
-            if not self.pre_layer_norm:
-                layer_out = self.layer_norm(layer_out)
+            layer_out = self.layer_norm(layer_out) if not self.pre_layer_norm else context
             layer_out = self.feed_forward(layer_out)
 
         return layer_out
@@ -297,7 +297,7 @@ class TransformerEncoder(EncoderBase):
         # Run the forward pass of every layer of the tranformer.
         for layer in self.transformer:
             enc_out = layer(enc_out, mask)
-        if self.final_layer_norm:
+        if self.layer_norm is not None:
             enc_out = self.layer_norm(enc_out)
         return enc_out, None, src_len, word_mask
 

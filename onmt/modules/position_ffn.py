@@ -48,6 +48,7 @@ class PositionwiseFeedForward(nn.Module):
         norm_eps=1e-6,
         use_ckpting=[],
         parallel_gpu=1,
+        pre_layer_norm=True,
     ):
         super(PositionwiseFeedForward, self).__init__()
         assert (
@@ -87,6 +88,7 @@ class PositionwiseFeedForward(nn.Module):
             self.w_3 = None
         self.maybe_ckpt = checkpoint if "ffn" in use_ckpting else lambda f, x: f(x)
         self.parallel_gpu = parallel_gpu
+        self.pre_layer_norm = pre_layer_norm
 
     def forward(self, x):
         """Layer definition.
@@ -97,7 +99,7 @@ class PositionwiseFeedForward(nn.Module):
         Returns:
             (FloatTensor): Output ``(batch_size, input_len, model_dim)``.
         """
-        if not self.parallel_residual:
+        if not self.parallel_residual and self.pre_layer_norm:
             norm_x = self.layer_norm(x)
         else:
             norm_x = x.clone()
@@ -114,7 +116,10 @@ class PositionwiseFeedForward(nn.Module):
         if self.parallel_gpu > 1:
             all_reduce(inter)
 
-        return inter + x
+        inter = inter + x
+        if not self.pre_layer_norm:
+            inter = self.layer_norm(inter)
+        return inter
 
     def update_dropout(self, dropout):
         self.dropout_1.p = dropout

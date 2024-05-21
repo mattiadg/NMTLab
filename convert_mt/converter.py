@@ -13,13 +13,13 @@ from ctranslate2.converters.marian import _get_model_config
 NAME_MAP = {
     'encoder.embeddings_0.weight': 'encoder.embeddings.make_embedding.emb_luts.0.weight',
     'encoder.transformer.0.self_attn.linear_0.weight': (
-        'encoder.transformer.0.self_attn.linear_keys.weight',
         'encoder.transformer.0.self_attn.linear_query.weight',
+        'encoder.transformer.0.self_attn.linear_keys.weight',
         'encoder.transformer.0.self_attn.linear_values.weight',
     ),
     'encoder.transformer.0.self_attn.linear_0.bias': (
-        'encoder.transformer.0.self_attn.linear_keys.bias',
         'encoder.transformer.0.self_attn.linear_query.bias',
+        'encoder.transformer.0.self_attn.linear_keys.bias',
         'encoder.transformer.0.self_attn.linear_values.bias',
     ),
 }
@@ -49,11 +49,13 @@ def process_name(name: str) -> str:
     name = layer_regex.sub(r"transformer.\2", name)
     name = embeddings_regex.sub('embeddings.make_embedding.emb_luts.0', name)
 
+    if 'position_encodings' in name:
+        return name.replace('position_encodings.encodings', 'embeddings.make_embedding.pe.pe')
     if match := self_attn_regex.match(name):
         transformer = "transformer" if match.group(1) == "encoder" else "transformer_layers"
         name = (
-            f'{match.group(1)}.{transformer}.{match.group(2)}.self_attn.linear_keys.{match.group(3)}',
             f'{match.group(1)}.{transformer}.{match.group(2)}.self_attn.linear_query.{match.group(3)}',
+            f'{match.group(1)}.{transformer}.{match.group(2)}.self_attn.linear_keys.{match.group(3)}',
             f'{match.group(1)}.{transformer}.{match.group(2)}.self_attn.linear_values.{match.group(3)}',
         )
         return name
@@ -82,13 +84,16 @@ def process_name(name: str) -> str:
 
 def convert_tensor(name, variable):
     new_name = process_name(name)
-    new_name = NAME_MAP.get(new_name, new_name)
     if isinstance(new_name, str):
         if not isinstance(variable, torch.Tensor):
             if variable.shape == ():
                 yield new_name, torch.tensor(variable.array)
             else:
-                yield new_name, torch.from_numpy(variable.array)
+                torcharray = torch.from_numpy(variable.array)
+                if 'pe' in new_name:
+                    torcharray = torcharray.unsqueeze(1)
+                    yield 'num_positional_encoding', torch.from_numpy(np.array(torcharray.size(0)))
+                yield new_name, torcharray
     elif isinstance(new_name, tuple):
         variables = np.split(variable.array, len(new_name))
         for k, v in zip(new_name, variables):
@@ -123,6 +128,11 @@ def make_opts(config):
     opt.dec_hid_size = opt.dim_emb
     opt.final_layer_norm = False
     opt.add_qkvbias = True
+    opt.src_word_vec_size = opt.dim_emb
+    opt.tgt_word_vec_size = opt.dim_emb
+    opt.share_embeddings = opt.tied_embeddings_all
+    opt.feat_merge = "sum"
+    opt.position_encoding = True
 
     return opt
 
@@ -138,11 +148,14 @@ def prepare_variables(variables):
 
 def acquire_variables(variable_dict):
     new_params = {}
+    options = {}
     for k, v in variable_dict.items():
-        if "position_encodings" in k or not v.array.shape:
-            continue
-        new_params |= {new_name: new_value for new_name, new_value in convert_tensor(k, v)}
-    return new_params
+        for new_name, new_value in convert_tensor(k, v):
+            if new_value.ndim == 0:
+                options[new_name] = new_value
+            else:
+                new_params[new_name] = new_value
+    return new_params, options
 
 
 def save(self, output_dir: str, config: dict[str, Any]) -> None:
@@ -151,21 +164,21 @@ def save(self, output_dir: str, config: dict[str, Any]) -> None:
     Arguments:
       output_dir: Output directory where the model is saved.
     """
-    variables = prepare_variables(self.variables())
+    variables, options = prepare_variables(self.variables())
     generator = {
         "weight": variables.pop('generator.weight'),
         "bias": variables.pop('generator.bias'),
     }
     config_ = {k.replace("-", "_"): v for k, v in config.items()}
-    opt = make_opts(self._config.__dict__ | config_)
+    opt = make_opts(self._config.__dict__ | config_ | options)
     checkpoint = {
         "model": variables,
         "generator": generator,
         "vocab": convert_vocabularies(self._vocabularies, self._config),
         "opt": opt,
     }
-    chpt_path = Path(output_dir) / "opusmt_converted.pt"
-    torch.save(checkpoint, chpt_path)
+    ckpt_path = Path(output_dir) / "opusmt_converted.pt"
+    torch.save(checkpoint, ckpt_path)
 
 
 def convert(
