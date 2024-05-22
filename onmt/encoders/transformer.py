@@ -134,7 +134,7 @@ class TransformerEncoderLayer(nn.Module):
             )
         else:
             layer_out = context + layer_in
-            layer_out = self.layer_norm(layer_out) if not self.pre_layer_norm else context
+            layer_out = self.layer_norm(layer_out) if not self.pre_layer_norm else layer_out
             layer_out = self.feed_forward(layer_out)
 
         return layer_out

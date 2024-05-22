@@ -7,7 +7,11 @@ from typing import Optional, Any
 
 import numpy as np
 import torch
-from ctranslate2.converters.marian import _get_model_config
+from ctranslate2.converters.marian import _get_model_config, _SUPPORTED_ACTIVATIONS
+from ctranslate2.specs.common_spec import Activation
+
+
+_INVERSE_ACTIVATION = {v: k for k, v in _SUPPORTED_ACTIVATIONS.items()}
 
 
 NAME_MAP = {
@@ -133,6 +137,10 @@ def make_opts(config):
     opt.share_embeddings = opt.tied_embeddings_all
     opt.feat_merge = "sum"
     opt.position_encoding = True
+    opt.heads = getattr(opt, "encoder.num_heads")
+    opt.pos_ffn_activation_fn = _INVERSE_ACTIVATION[Activation(int(getattr(opt, "decoder.activation")))]
+    if opt.pos_ffn_activation_fn == "swish":
+        opt.pos_ffn_activation_fn = "silu"
 
     return opt
 

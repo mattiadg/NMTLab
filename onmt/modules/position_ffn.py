@@ -77,7 +77,7 @@ class PositionwiseFeedForward(nn.Module):
         self.dropout_1 = nn.Dropout(dropout)
         self.dropout_2 = nn.Dropout(dropout)
         self.activation = ACTIVATION_FUNCTIONS[activation_fn]
-        if activation_fn == "silu" or activation_fn == "gated-gelu":
+        if activation_fn == "gated-gelu":
             self.w_3 = skip_init(
                 nn.Linear,
                 in_features=d_model,
