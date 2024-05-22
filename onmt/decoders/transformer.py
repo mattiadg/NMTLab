@@ -432,7 +432,7 @@ class TransformerDecoderLayer(TransformerDecoderLayerBase):
                 ctx_attn = self.dropout(ctx_attn)
             pre_ff = ctx_attn + query
             if not self.pre_layer_norm:
-                pre_ff = self.layer_norm_2(ctx_attn + query)
+                pre_ff = self.layer_norm_2(pre_ff)
             layer_out = self.feed_forward(pre_ff)
 
         return layer_out, attns

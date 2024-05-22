@@ -14,21 +14,6 @@ from ctranslate2.specs.common_spec import Activation
 _INVERSE_ACTIVATION = {v: k for k, v in _SUPPORTED_ACTIVATIONS.items()}
 
 
-NAME_MAP = {
-    'encoder.embeddings_0.weight': 'encoder.embeddings.make_embedding.emb_luts.0.weight',
-    'encoder.transformer.0.self_attn.linear_0.weight': (
-        'encoder.transformer.0.self_attn.linear_query.weight',
-        'encoder.transformer.0.self_attn.linear_keys.weight',
-        'encoder.transformer.0.self_attn.linear_values.weight',
-    ),
-    'encoder.transformer.0.self_attn.linear_0.bias': (
-        'encoder.transformer.0.self_attn.linear_query.bias',
-        'encoder.transformer.0.self_attn.linear_keys.bias',
-        'encoder.transformer.0.self_attn.linear_values.bias',
-    ),
-}
-
-
 layer_regex = re.compile(r'(layer_)(\d)')
 self_attn_regex = re.compile(r'(encoder|decoder).transformer.(\d).self_attn.linear_0.(weight|bias)')
 embeddings_regex = re.compile(r'embeddings(_0)?')
